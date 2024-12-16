@@ -1,0 +1,565 @@
+---
+title: "Gev_Gpd_non_stationary"
+author: "Laura HASBINI"
+date: "21 février 2023"
+output: html_document
+---
+
+```{r, library and path, warming=FALSE, error=FALSE, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(ncdf4)
+library(extRemes)
+source("caldat.R")
+source("gev_gdp.R")
+library(dplyr)
+library(patchwork)
+library(zoo)
+library(gridExtra)
+library(scales)
+fig_path = '/home/estimr3/lhasbini/ANDRA/R_fig/'
+CMIP6Adjust_path = "/home/estimr3/yiou/ANDRA2022/CMIP6_R2D2/GrandEst/"
+CMIP6_path = "/home/estimr3/lhasbini/CMIP6/"
+```
+
+# Preparation of the data
+## Extract and create dataframe
+```{r, extract netcdf}
+#Hist
+name_hist <- "tasmaxAdjust_France_IPSL_IPSL-CM6A-LR_historical_R2D2-L-NV-2L_SAFRAN_day_18500101-20141231_gridGE"
+tasmax_adjust_hist_path_name <- paste(CMIP6Adjust_path, name_hist, ".nc", sep="")
+hist_nc <- nc_open(tasmax_adjust_hist_path_name)
+
+time_hist <- hist_nc$dim$time$vals
+conv.time_hist <- caldat(time_hist+julday(1,1,1850))
+tasmax_adjust_hist <- ncvar_get(hist_nc,"tasmaxAdjust")
+tasmax_adjust_hist <- tasmax_adjust_hist-273 #Conversion of the temperature in °C"
+
+nc_close(hist_nc)
+
+#ssp126
+name_ssp126 <- "tasmaxAdjust_France_IPSL_IPSL-CM6A-LR_ssp126_R2D2-L-NV-2L_SAFRAN_day_20150101-20991231_gridGE"
+tasmax_adjust_ssp126_path_name <- paste(CMIP6Adjust_path, name_ssp126, ".nc", sep="")
+ssp126_nc <- nc_open(tasmax_adjust_ssp126_path_name)
+tasmax_adjust_ssp126 <- ncvar_get(ssp126_nc,"tasmaxAdjust")
+tasmax_adjust_ssp126 <- tasmax_adjust_ssp126-273
+
+nc_close(ssp126_nc)
+
+#ssp245
+name_ssp245 <- "tasmaxAdjust_France_IPSL_IPSL-CM6A-LR_ssp245_R2D2-L-NV-2L_SAFRAN_day_20150101-20991231_gridGE"
+tasmax_adjust_ssp245_path_name <- paste(CMIP6Adjust_path, name_ssp245, ".nc", sep="")
+ssp245_nc <- nc_open(tasmax_adjust_ssp245_path_name)
+tasmax_adjust_ssp245 <- ncvar_get(ssp245_nc,"tasmaxAdjust")
+tasmax_adjust_ssp245 <- tasmax_adjust_ssp245-273
+
+nc_close(ssp245_nc)
+
+#SPP3
+name_ssp370 <- "tasmaxAdjust_France_IPSL_IPSL-CM6A-LR_ssp370_R2D2-L-NV-2L_SAFRAN_day_20150101-20991231_gridGE"
+tasmax_adjust_ssp370_path_name <- paste(CMIP6Adjust_path, name_ssp370, ".nc", sep="")
+ssp370_nc <- nc_open(tasmax_adjust_ssp370_path_name)
+tasmax_adjust_ssp370 <- ncvar_get(ssp370_nc,"tasmaxAdjust")
+tasmax_adjust_ssp370 <- tasmax_adjust_ssp370-273
+
+nc_close(ssp370_nc)
+
+#ssp585
+name_ssp585 <- "tasmaxAdjust_France_IPSL_IPSL-CM6A-LR_ssp585_R2D2-L-NV-2L_SAFRAN_day_20150101-20991231_gridGE"
+tasmax_adjust_ssp585_path_name <- paste(CMIP6Adjust_path, name_ssp585, ".nc", sep="")
+ssp585_nc <- nc_open(tasmax_adjust_ssp585_path_name)
+tasmax_adjust_ssp585 <- ncvar_get(ssp585_nc,"tasmaxAdjust")
+tasmax_adjust_ssp585 <- tasmax_adjust_ssp585-273
+
+time_ssp <- ssp585_nc$dim$time$vals
+conv.time_ssp <- caldat(time_ssp+julday(1,1,2015))
+
+nc_close(ssp585_nc)
+```
+
+```{r, extract tas mean covariate}
+name_hist <- "tas_fldmean_yearmean_IPSL_historical"
+tas_hist_path_name <- paste(CMIP6_path, name_hist, ".nc", sep="")
+hist_nc <- nc_open(tas_hist_path_name)
+
+time_hist <- hist_nc$dim$time$vals
+conv.time_hist <- caldat(time_hist+julday(1,1,1850))
+tas_hist_global <- ncvar_get(hist_nc,"tas")
+tas_hist_global <- tas_hist_global-273 #Conversion of the temperature in °C"
+nc_close(hist_nc)
+```
+
+In each netcdf file, the variable ncells corresponds to the location of the data point
+
+```{r, init of global param}
+#Initializatin of global parameters 
+stations = c('St Dizier','Cirfontaines','Bure')
+scenarios = c('historical', 'ssp126', 'ssp245', 'ssp370', 'ssp585')
+```
+
+```{r, conversion to df}
+#Creation of a global DataFrame with daily maximum
+rownames(tasmax_adjust_hist) = stations
+rownames(tasmax_adjust_ssp126) = stations
+rownames(tasmax_adjust_ssp245) = stations
+rownames(tasmax_adjust_ssp370) = stations
+rownames(tasmax_adjust_ssp585) = stations
+
+tasmax_adjust_stations_hist = as.data.frame(t(tasmax_adjust_hist)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'historical', year = rep(conv.time_hist$year, 3), jul_time = rep(time_hist, 3))
+
+tasmax_adjust_stations_ssp126 = as.data.frame(t(tasmax_adjust_ssp126)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp126', year = rep(conv.time_ssp$year, 3), jul_time = rep(time_hist, 3))
+
+tasmax_adjust_stations_ssp245 = as.data.frame(t(tasmax_adjust_ssp245)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp245', year = rep(conv.time_ssp$year, 3), jul_time = rep(time_hist, 3))
+
+tasmax_adjust_stations_ssp370 = as.data.frame(t(tasmax_adjust_ssp370)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp370', year = rep(conv.time_ssp$year, 3), jul_time = rep(time_hist, 3))
+
+tasmax_adjust_stations_ssp585 = as.data.frame(t(tasmax_adjust_ssp585)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp585', year = rep(conv.time_ssp$year, 3), jul_time = rep(time_hist, 3))
+
+tasmax_adjust_stations = rbind(tasmax_adjust_stations_hist, tasmax_adjust_stations_ssp126, tasmax_adjust_stations_ssp245, tasmax_adjust_stations_ssp370, tasmax_adjust_stations_ssp585)
+```
+
+```{r, Summer daily df}
+#Select summer months
+
+TX_hist.JJA = TX_hist[,conv.time_hist$month %in% c(6:8)]
+TX_ssp126.JJA = TX_ssp126[,conv.time_ssp$month %in% c(6:8)]
+TX_ssp245.JJA = TX_ssp245[,conv.time_ssp$month %in% c(6:8)]
+TX_ssp370.JJA = TX_ssp370[,conv.time_ssp$month %in% c(6:8)]
+TX_ssp585.JJA = TX_ssp585[,conv.time_ssp$month %in% c(6:8)]
+
+#Rename columns
+rownames(TX_hist) = stations
+rownames(TX_ssp126) = stations
+rownames(TX_ssp245) = stations
+rownames(TX_ssp370) = stations
+rownames(TX_ssp585) = stations
+
+#Convert to Dataframe
+df_hist.JJA = as.data.frame(t(TX_hist.JJA)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'historical', year = rep(conv.time_hist$year[conv.time_hist$month %in% c(6:8)], 3))
+df_ssp126.JJA = as.data.frame(t(TX_ssp126.JJA)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp126', year = rep(conv.time_ssp$year[conv.time_ssp$month %in% c(6:8)], 3))
+df_ssp245.JJA = as.data.frame(t(TX_ssp245.JJA)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp245', year = rep(conv.time_ssp$year[conv.time_ssp$month %in% c(6:8)], 3))
+df_ssp370.JJA = as.data.frame(t(TX_ssp370.JJA)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp370', year = rep(conv.time_ssp$year[conv.time_ssp$month %in% c(6:8)], 3))
+df_ssp585.JJA = as.data.frame(t(TX_ssp585.JJA)) %>% 
+  gather(station, TX, c('St Dizier', 'Cirfontaines', 'Bure')) %>% 
+  mutate(scenario = 'ssp585', year = rep(conv.time_ssp$year[conv.time_ssp$month %in% c(6:8)], 3))
+
+tasmax_adjust_stations.JJA = rbind(df_hist.JJA, df_ssp126.JJA, df_ssp245.JJA, df_ssp370.JJA, df_ssp585.JJA)
+```
+
+```{r, conversion to yearly max (TX) df}
+#Computation of the global yearly maximum (TX) and save in a DataFrame
+TX_adjust_stations = data.frame(matrix(ncol = 5, nrow = 0))
+x <- c("station", "TX", "TX_jitter", "scenario", "year")
+colnames(TX_adjust_stations) <- x
+
+for(sc in scenarios){
+  for(st in stations){
+    data_loop.max = tasmax_adjust_stations %>% filter(station == st, scenario == sc)
+    
+    if(sc == 'historical'){
+      time_loop = conv.time_hist$year
+    }
+    else{
+      time_loop = conv.time_ssp$year
+    }
+    
+    df_loop.max = data.frame(matrix(ncol = 4, nrow = length(unique(time_loop))))
+    x <- c("station", "TX", "scenario", "year")
+    
+    colnames(df_loop.max) <- x
+    #df_loop.max$TX_no_jitter = tapply(data_loop.max$TX, time_loop, max)
+    df_loop.max$TX = jitter(tapply(data_loop.max$TX, time_loop, max), 100)
+    df_loop.max$station = st
+    df_loop.max$scenario = sc
+    df_loop.max$year = unique(time_loop)
+    TX_adjust_stations = rbind(TX_adjust_stations, df_loop.max)
+  }
+}
+```
+
+#
+##GEV
+```{r, Compute GEV/GPD parameters and return levels under non-stationarity}
+##Return levels and parameters for non-stationary GEV distributions
+
+#return level of ns models
+ns_models.gev.rl = data.frame(matrix(ncol = 6, nrow = 0))
+colnames(ns_models.gev.rl) = c('station', 'scenario', 'start_year', 'return_period', 'return_level', 'model')
+
+#Parameters of the nc models
+ns_models.gev.params = data.frame(matrix(ncol = 19, nrow = 0))
+colnames(ns_models.gev.params) = c('station', 'scenario', 'model',  'loc_0', 'loc_0_low', 'loc_0_high', 'loc_1', 'loc_1_low', 'loc_1_high', 'scale_0', 'scale_0_low', 'scale_0_high', 'scale_1', 'scale_1_low', 'scale_1_high', 'shape', 'shape_low', 'shape_high', 'llh')
+
+for(sc in scenarios){
+  for(st in stations){
+    data_loop = TX_adjust_stations %>% filter(station==st, scenario==sc)
+    year_norm = (data_loop$year - mean(data_loop$year))/var(data_loop$year)
+    #Model 0 
+    model_0 = fevd(TX, data=data_loop)
+    ci_model_0 = ci(model_0, type = 'parameter', method="boot")
+    ns_models.gev.params = rbind(ns_models.gev.params, 
+                             data.frame(station = st, 
+                                        scenario = sc, 
+                                        model= 0, 
+                                        #Location
+                                        loc_0 = as.numeric(model_0$results$par[1]),
+                                        loc_0_low = ci_model_0[1,1],
+                                        loc_0_high = ci_model_0[1,3],
+                                        loc_1 = 0,
+                                        loc_1_low = 0, 
+                                        loc_1_high = 0, 
+                                        #Scale
+                                        scale_0 = as.numeric(model_0$results$par[2]),
+                                        scale_0_low = ci_model_0[2,1], 
+                                        scale_0_high = ci_model_0[2,3], 
+                                        scale_1 = 0,
+                                        scale_1_low = 0, 
+                                        scale_1_high = 0,
+                                        #Shape
+                                        shape = as.numeric(model_0$results$par[3]),
+                                        shape_low = ci_model_0[3,1], 
+                                        shape_high = ci_model_0[3,3],
+                                        #Log Likelihood
+                                        llh = as.numeric(model_0$results$value)
+                                        )
+                             )
+    
+    #Model 1
+    model_1 = fevd(TX, data=data_loop, location.fun = ~year_norm)
+    ci_model_1 = ci(model_1, type = 'parameter', method="boot")
+    ns_models.gev.params = rbind(ns_models.gev.params, 
+                             data.frame(station = st, 
+                                        scenario = sc, 
+                                        model= 1, 
+                                        #Location
+                                        loc_0 = as.numeric(model_1$results$par[1]),
+                                        loc_0_low = ci_model_1[1,1],
+                                        loc_0_high = ci_model_1[1,3],
+                                        loc_1 = as.numeric(model_1$results$par[2]),
+                                        loc_1_low = ci_model_1[2,1],
+                                        loc_1_high = ci_model_1[2,3],
+                                        #Scale
+                                        scale_0 = as.numeric(model_1$results$par[3]),
+                                        scale_0_low = ci_model_1[3,1], 
+                                        scale_0_high = ci_model_1[3,3], 
+                                        scale_1 = 0,
+                                        scale_1_low = 0, 
+                                        scale_1_high = 0, 
+                                        #Shape
+                                        shape = as.numeric(model_1$results$par[4]),
+                                        shape_low = ci_model_1[4,1], 
+                                        shape_high = ci_model_1[4,3],
+                                        #Log Likelihood 
+                                        llh = as.numeric(model_1$results$value)
+                                        )
+                             )
+    #Model 2    
+    model_2 = fevd(TX, data=data_loop, scale.fun = ~year_norm)
+    ci_model_2 = ci(model_2, type = 'parameter', method="boot")
+    ns_models.gev.params = rbind(ns_models.gev.params, 
+                         data.frame(station = st, 
+                                    scenario = sc, 
+                                    model= 2, 
+                                    #Location
+                                    loc_0 = as.numeric(model_2$results$par[1]),
+                                    loc_0_low = ci_model_2[1,1],
+                                    loc_0_high = ci_model_2[1,3],
+                                    loc_1 = 0,
+                                    loc_1_low = 0,
+                                    loc_1_high = 0,
+                                    #Scale
+                                    scale_0 = as.numeric(model_2$results$par[2]),
+                                    scale_0_low = ci_model_2[2,1], 
+                                    scale_0_high = ci_model_2[2,3], 
+                                    scale_1 = as.numeric(model_2$results$par[3]),
+                                    scale_1_low = ci_model_2[3,1], 
+                                    scale_1_high = ci_model_2[3,3], 
+                                    #Shape
+                                    shape = as.numeric(model_2$results$par[4]),
+                                    shape_low = ci_model_2[4,1], 
+                                    shape_high = ci_model_2[4,3],
+                                    llh = as.numeric(model_2$results$value)
+                                    )
+                         )
+    
+    #Model 3
+    model_3 = fevd(TX, data=data_loop, location.fun = ~year_norm, scale.fun = ~year_norm)
+    ci_model_3 = ci(model_3, type = 'parameter', method="boot")
+    ns_models.gev.params = rbind(ns_models.gev.params, 
+                         data.frame(station = st, 
+                                    scenario = sc, 
+                                    model= 3, 
+                                    #Location
+                                    loc_0 = as.numeric(model_3$results$par[1]),
+                                    loc_0_low = ci_model_3[1,1],
+                                    loc_0_high = ci_model_3[1,3],
+                                    loc_1 = as.numeric(model_3$results$par[2]),
+                                    loc_1_low = ci_model_3[2,1],
+                                    loc_1_high = ci_model_3[2,3],
+                                    #Scale
+                                    scale_0 = as.numeric(model_3$results$par[3]),
+                                    scale_0_low = ci_model_3[3,1], 
+                                    scale_0_high = ci_model_3[3,3], 
+                                    scale_1 = as.numeric(model_3$results$par[4]),
+                                    scale_1_low = ci_model_3[4,1], 
+                                    scale_1_high = ci_model_3[4,3], 
+                                    #Shape
+                                    shape = as.numeric(model_3$results$par[5]),
+                                    shape_low = ci_model_3[5,1], 
+                                    shape_high = ci_model_3[5,3],
+                                    llh = as.numeric(model_3$results$value)
+                                    )
+                         )
+  
+    for(y in year_norm){
+      for(id_mod in 0:3){
+        #Extract model's parameters
+        param_model_loop = ns_models.gev.params %>% filter(station==st, scenario==sc, model==id_mod)
+        loc_model_loop = param_model_loop$loc_0 + param_model_loop$loc_1*y
+        scale_model_loop = param_model_loop$scale_0 + param_model_loop$scale_1*y
+        shape_model_loop = param_model_loop$shape
+        
+        #Compute and save return levels 
+        model_loop.rl = data.frame(matrix(ncol = ncol(ns_models.gev.rl), nrow = length(return_period)))
+        colnames(model_loop.rl) = colnames(ns_models.gev.rl)
+        model_loop.rl$return_period = return_period
+        model_loop.rl$return_level = gev_theoretical_rl(loc_model_loop, scale_model_loop, shape_model_loop, return_period)
+        model_loop.rl$station = st
+        model_loop.rl$scenario = sc
+        model_loop.rl$start_year = y
+        model_loop.rl$model = id_mod
+      
+        ns_models.gev.rl = rbind(ns_models.gev.rl, model_loop.rl)
+        }
+      } 
+    }
+  }
+```
+
+
+
+```{r, Compute parameter evolution as a function of year}
+##Parameter evolution
+#Creation of a df saving the volution of the parameters with time 
+ns_models.gev.evol_params = data.frame(matrix(ncol = 13, nrow = 0))
+colnames(ns_models.gev.evol_params) = c('station', 'scenario', 'model', 'year', 'loc', 'loc_low', 'loc_high', 'scale', 'scale_low', 'scale_high', 'shape', 'shape_low', 'shape_high')
+for(st in stations){
+  for(sc in scenarios){
+    if(sc=='historical'){
+      years_loop = unique(conv.time_hist$year)#seq(min(conv.time_hist$year), max(conv.time_hist$year), by=8)
+    }
+    else{
+      years_loop = unique(conv.time_ssp$year)#seq(min(conv.time_ssp$year), max(conv.time_ssp$year), by=8)
+    }
+    data_loop = TX_adjust_stations %>% filter(station==st, scenario==sc)
+    year_norm = (data_loop$year - mean(data_loop$year))/var(data_loop$year)
+    for(id_mod in 0:3){
+      #years_loop = years_loop+2*id_mod
+      params_loop = ns_models.gev.params %>% filter(station == st, scenario==sc, model==id_mod)
+      
+      
+      param_evol_loop = data.frame(matrix(ncol = ncol(ns_models.gev.evol_params), nrow = length(years_loop)))
+      colnames(param_evol_loop) = colnames(ns_models.gev.evol_params)
+      
+      param_evol_loop$year = years_loop
+      
+      #Location
+      param_evol_loop$loc = params_loop$loc_0 + params_loop$loc_1*year_norm
+      param_evol_loop$loc_low = params_loop$loc_0_low + params_loop$loc_1_low*year_norm
+      param_evol_loop$loc_high = params_loop$loc_0_high + params_loop$loc_1_high*year_norm
+      
+      #Scale
+      param_evol_loop$scale = params_loop$scale_0 + params_loop$scale_1*year_norm
+      param_evol_loop$scale_low = params_loop$scale_0_low + params_loop$scale_1_low*year_norm
+      param_evol_loop$scale_high = params_loop$scale_0_high + params_loop$scale_1_high*year_norm
+      
+      #Shape
+      param_evol_loop$shape = params_loop$shape
+      param_evol_loop$shape_low = params_loop$shape_low
+      param_evol_loop$shape_high = params_loop$shape_high
+      param_evol_loop$station = st
+      param_evol_loop$scenario = sc
+      param_evol_loop$model = id_mod
+    
+      ns_models.gev.evol_params = rbind(ns_models.gev.evol_params, param_evol_loop)
+    }
+  }
+}
+```
+
+```{r, Plot parameters value as a function of score}
+plot_ns_loc_0_evol.gev = ns_models.gev.params %>%
+  ggplot(aes(x=model, y=loc_0, colour=scenario)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = loc_0_low, ymax = loc_0_high, fill=scenario), linetype=0, alpha = 0.1) +
+  theme_minimal() +
+  #ylim(-0.2,-0.075) +
+  ggtitle('GEV - Evolution of loc_0 parameter as a function of model') +
+  facet_wrap(~station)
+
+plot_ns_loc_1_evol.gev = ns_models.gev.params %>%
+  ggplot(aes(x=model, y=loc_1, colour=scenario)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = loc_1_low, ymax = loc_1_high, fill=scenario), linetype=0, alpha = 0.1) +
+  theme_minimal() +
+  #ylim(-0.2,-0.075) +
+  ggtitle('GEV - Evolution of loc_1 parameter as a function of model') +
+  facet_wrap(~station)
+
+plot_ns_scale_0_evol.gev = ns_models.gev.params %>%
+  ggplot(aes(x=model, y=scale_0, colour=scenario)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = scale_0_low, ymax = scale_0_high, fill=scenario), linetype=0, alpha = 0.1) +
+  theme_minimal() +
+  #ylim(-0.2,-0.075) +
+  ggtitle('GEV - Evolution of scale_0 parameter as a function of model') +
+  facet_wrap(~station)
+
+plot_ns_scale_1_evol.gev = ns_models.gev.params %>%
+  ggplot(aes(x=model, y=scale_1, colour=scenario)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = scale_1_low, ymax = scale_1_high, fill=scenario), linetype=0, alpha = 0.1) +
+  theme_minimal() +
+  #ylim(-0.2,-0.075) +
+  ggtitle('GEV - Evolution of scale_1 parameter as a function of model') +
+  facet_wrap(~station)
+
+plot_ns_shape_evol.gev = ns_models.gev.params %>%
+  ggplot(aes(x=model, y=shape, colour=scenario)) +
+  geom_line() +
+  geom_ribbon(aes(ymin = shape_low, ymax = shape_high, fill=scenario), linetype=0, alpha = 0.1) +
+  theme_minimal() +
+  #ylim(-0.2,-0.075) +
+  ggtitle('GEV - Evolution of shape parameter as a function of model') +
+  facet_wrap(~station)
+
+plot_ns_loc_0_evol.gev / plot_ns_loc_1_evol.gev / plot_ns_scale_0_evol.gev / plot_ns_scale_1_evol.gev / plot_ns_shape_evol.gev
+#ggsave(paste(fig_path,"params_evol_non_stationary_fct_model_gev.png", sep=""), height=15, width=7)
+```
+
+```{r, Plot parameters evolution as a }
+plot_evol_loc.gev = ns_models.gev.evol_params %>%
+  ggplot(aes(x=year, y=loc, colour=scenario, linetype=factor(model))) +
+  geom_line() +
+  geom_ribbon(aes(ymin = loc_low, ymax = loc_high, fill=scenario), linetype=0, alpha = 0.1) +
+  theme_minimal() +
+  ggtitle('GEV - Evolution of location parameter as a function of year') +
+  facet_wrap(~station)
+
+plot_evol_scale.gev = ns_models.gev.evol_params %>%
+  ggplot(aes(x=year, y=scale, colour=scenario, linetype=factor(model))) +
+  geom_line() +
+  geom_ribbon(aes(ymin = scale_low, ymax = scale_high, fill=scenario), linetype=0, alpha = 0.1) +
+  theme_minimal() +
+  ggtitle('GEV - Evolution of scale parameter as a function of year') +
+  facet_wrap(~station)
+
+plot_evol_loc.gev / plot_evol_scale.gev
+#ggsave(paste(fig_path,"params_evol_gev_non_stationary.png", sep=""), height=9, width=7)
+```
+
+```{r, Plot return levels as a function of model and time}
+sc = 'ssp245'
+ns_models.gev.rl %>%
+  filter(scenario==sc) %>%
+  ggplot(aes(x=return_period+model*return_period/10, y=return_level, colour=start_year, shape=factor(model))) +
+  geom_point() +
+  theme_minimal() +
+  scale_x_log10()+
+  facet_wrap(~station) +
+  ggtitle(paste('Non-stationary return levels as a function of return period and year - ', sc))
+#ggsave(paste(fig_path,"return_levels_gev_from_theory_non_stationary_", sc ,".png", sep=""), height=4, width = 9)
+```
+
+```{r, Plot return levels as a function of model and time}
+ggplot() +
+geom_point(aes(x = return_period, y=return_level, colour=start_year, shape = 'model 1'), data = ns_models.gev.rl%>%filter(model==1, scenario=='historical'))+
+geom_point(aes(x = return_period+return_period/5, y=return_level, colour=start_year, shape = 'model 2'), data = ns_models.gev.rl%>%filter(model==2, scenario=='historical'))+
+geom_point(aes(x = return_period-return_period/5, y=return_level, colour=start_year, shape = 'model 3'), data = ns_models.gev.rl%>%filter(model==3, scenario=='historical'))+ 
+scale_fill_gradient(low='yellow', high='red') +
+scale_x_log10()+
+theme_minimal()+
+facet_wrap(~station) +
+ggtitle('Non-stationary return levels as a function of return period and year - historical')
+#ggsave(paste(fig_path,"return_levels_gev_from_theory_non_stationary_historical.png", sep=""), height=4, width = 9)
+```
+
+```{r, Add normalized year as covariate}
+TX_adjust_stations_year_norm_cov = data.frame(matrix(ncol = ncol(TX_adjust_stations)+1, nrow = 0))
+colnames(TX_adjust_stations_year_norm_cov) = append(colnames(TX_adjust_stations), 'covariate')
+for(sc in scenarios){
+  for(st in stations){
+    data_loop = TX_adjust_stations %>% filter(station==st, scenario==sc)
+    data_loop$covariate = (data_loop$year - mean(data_loop$year))/var(data_loop$year)
+    TX_adjust_stations_year_norm_cov = rbind(TX_adjust_stations_year_norm_cov, data_loop)
+  }
+}
+gev_ns_year_norm_cov = gev_ns_rl_param_fct(TX_adjust_stations_year_norm_cov, rl=TRUE, return_period, scenarios, stations)
+```
+
+
+
+##GPD
+
+
+
+
+
+
+
+
+#Annexes, test
+```{r}
+test.gev = fevd(TX, data=TX_adjust_stations %>% filter(station=='Bure', scenario=='historical'))
+test_linearly_dep.gev = fevd(TX, data=TX_adjust_stations %>% filter(station=='Bure', scenario=='historical'), location.fun = ~year, scale.fun = ~year)
+plot(test_linearly_dep.gev, type='rl')
+```
+
+```{r}
+test = tasmax_adjust_stations %>% 
+               filter(station=='Bure', scenario=='historical')
+u = quantile(test$TX, probs = 0.95) 
+test_linearly_dep.gpd = fevd(TX, test, type='GP', threshold=u, scale.fun = ~year)
+plot(test_linearly_dep.gpd, type='rl')
+```
+
+```{r}
+#Test, computation of return levels with coviante matrix
+v = make.qcov(test_linearly_dep.gev, vals = list(mu1=()))
+return_level_linearly_dep.gev = return.level(test_linearly_dep.gev, return.period=return_period, do.ci=TRUE)
+return_level_linearly_dep.gpd = return.level(test_linearly_dep.gpd, return.period=return_period, do.ci=TRUE)
+```
+
+```{r}
+return_level_linearly_dep.gev = xtibber(test_linearly_dep.gev, which.one = 500, type='return.level', test.pars = seq(-1,1,0.05), B=5, verbose=FALSE)
+```
+
+```{r}
+v = make.qcov(test_linearly_dep.gpd, vals = list(sigma1=c(-1,1)))
+return.level(test_linearly_dep.gpd, return.period = return_period, qcov = v, do.ci=TRUE )
+```
+
+
+
+
+
+
+

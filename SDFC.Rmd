@@ -1,0 +1,49 @@
+---
+title: "SDCF"
+author: "Laura HASBINI"
+date: "20 juin 2023"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(ROOPSD)
+library(SDFC)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r cars}
+
+size = 2000
+XY = SDFC::dataset(size)
+t  = XY$t
+X_loc = XY$X_loc
+```
+
+```{r}
+loc   = 0.5 + 2 * X_loc
+scale = 1.2 + 0 * X_loc
+shape = -0.2 + 0 * X_loc
+Y     = ROOPSD::rgev( loc = loc , scale = scale , shape = shape , n = size )
+```
+
+```{r}
+gev = SDFC::GEV$new()
+gev$fit( Y , c_loc = X_loc , l_scale = SDFC::ULExponential$new() )
+print(gev$coef_)
+```
+
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+plot(pressure)
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.

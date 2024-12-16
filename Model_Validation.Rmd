@@ -1,0 +1,380 @@
+---
+title: "Model_Validation"
+author: "Laura HASBINI"
+date: "23 mars 2023"
+output: html_document
+---
+
+```{r, warning=FALSE, error=FALSE, message=FALSE}
+library(tidyverse)
+library(ggplot2)
+library(ncdf4)
+library(extRemes)
+source("caldat.R")
+source("gev_gdp.R")
+library(dplyr)
+library(patchwork)
+library(zoo)
+fig_path = '/home/estimr3/lhasbini/ANDRA/R_fig/'
+CMIP6_Ajust_path = "/home/estimr3/yiou/ANDRA2022/CMIP6_R2D2/GrandEst/"
+CMIP6_path = "/home/estimr3/lhasbini/CMIP6/"
+```
+
+#Extract Data
+```{r, init of global param}
+#Initializatin of global parameters 
+stations = c('St Dizier','Cirfontaines','Bure')
+scenarios = c('historical', 'ssp126', 'ssp245', 'ssp370', 'ssp585')
+groups = c('AS-RCEC', 'BCC', 'CCCma', 'CNRM-CERFACS', 'CSIRO', 'IPSL', 'MPI-M', 'MRI', 'NOAA-GFDL', 'EC-Earth-Consortium') #'MIROC',
+models = c('TaiESM1', 'BCC-CSM2-MR', 'CanESM5', 'CNRM-ESM2-1', 'ACCESS-ESM1-5', 'IPSL-CM6A-LR', 'MPI-ESM1-2-LR', 'MRI-ESM2-0', 'GFDL-ESM4', 'EC-Earth3') #'MIROC-ES2L',
+```
+
+```{r, extract CMIP6 data}
+tas_global = data_CMIP6_fldmean_yearmean_to_df(models, CMIP6_path, 'tas', scenarios, 'Global')
+#tas_Europe = data_CMIP6_fldmean_yearmean_to_df(models, CMIP6_path, 'tas', scenarios, 'Europe')
+
+
+#tasmax
+tasmax_CMIP6_GE = data_CMIP6_GE_to_df(models, CMIP6_path, 'tasmax', scenarios)
+tasmax_CMIP6_GE$station = 'GrandEst'
+tasmax_CMIP6_GE.JJA = data_CMIP6_GE_to_df(models, CMIP6_path, 'tasmax', scenarios, season='JJA')
+tasmax_CMIP6_GE.DJF = data_CMIP6_GE_to_df(models, CMIP6_path, 'tasmax', scenarios, season='DJF')
+TX_CMIP6_GE = data_to_varn_max(tasmax_CMIP6_GE)
+
+#tasmin
+tasmin_CMIP6_GE = data_CMIP6_GE_to_df(models, CMIP6_path, 'tasmin', scenarios)
+tasmin_CMIP6_GE$station = 'GrandEst'
+tasmin_CMIP6_GE.JJA = data_CMIP6_GE_to_df(models, CMIP6_path, 'tasmin', scenarios, season='JJA')
+tasmin_CMIP6_GE.DJF = data_CMIP6_GE_to_df(models, CMIP6_path, 'tasmin', scenarios, season='DJF')
+TM_CMIP6_GE = data_to_varn_min(tasmin_CMIP6_GE)
+```
+
+```{r, extract data}
+tasmax_adjust_stations = data_adjust_to_df(groups, models, CMIP6_Ajust_path, 'tasmax', scenarios, stations)
+tasmax_adjust_stations.JJA = data_adjust_to_df(groups, models, CMIP6_Ajust_path, 'tasmax', scenarios, stations, 'JJA')
+tasmax_adjust_stations.DJF = data_adjust_to_df(groups, models, CMIP6_Ajust_path, 'tasmax', scenarios, stations, 'DJF')
+
+#tasmin_adjust_stations = data_adjust_to_df(groups, models, CMIP6_Ajust_path, 'tasmin', scenarios, stations)
+#tasmin_adjust_stations.JJA = data_adjust_to_df(groups, models, CMIP6_Ajust_path, 'tasmin', scenarios, stations, 'JJA')
+#tasmin_adjust_stations.DJF = data_adjust_to_df(groups, models, CMIP6_Ajust_path, 'tasmin', scenarios, stations, 'DJF')
+```
+
+```{r, TX adjusted stations}
+TX_adjust_stations = data_to_varn_max(tasmax_adjust_stations)
+TX_adjust_stations.DJF = data_to_varn_max(tasmax_adjust_stations.DJF)
+```
+
+```{r, tasmax add column to Adjust data}
+tasmax_CMIP6_GE_mutate = tasmax_CMIP6_GE %>% mutate(CMIP_var = var) %>% select(-c(var, station))
+tasmax_adjust_stations_and_CMIP = merge(tasmax_adjust_stations, tasmax_CMIP6_GE_mutate, by=c("jul_time", "year", "scenario", "CMIP_model")) 
+
+#JJA
+tasmax_CMIP6_GE_mutate.JJA = tasmax_CMIP6_GE.JJA %>% mutate(CMIP_var = var) %>% select(-c(var, station))
+tasmax_adjust_stations_and_CMIP.JJA = merge(tasmax_adjust_stations.JJA, tasmax_CMIP6_GE_mutate.JJA, by=c("jul_time", "year", "scenario", "CMIP_model")) 
+
+#DJF
+tasmax_CMIP6_GE_mutate.DJF = tasmax_CMIP6_GE.DJF %>% mutate(CMIP_var = var) %>% select(-c(var, station))
+tasmax_adjust_stations_and_CMIP.DJF = merge(tasmax_adjust_stations.DJF, tasmax_CMIP6_GE_mutate.DJF, by=c("jul_time", "year", "scenario", "CMIP_model")) 
+```
+
+```{r, tasmin add column to Adjust data}
+tasmin_CMIP6_GE_mutate = tasmin_CMIP6_GE %>% mutate(CMIP_var = var) %>% select(-c(var, station))
+tasmin_adjust_stations_and_CMIP = merge(tasmin_adjust_stations, tasmin_CMIP6_GE_mutate, by=c("jul_time", "year", "scenario", "CMIP_model")) 
+
+#JJA
+tasmin_CMIP6_GE_mutate.JJA = tasmin_CMIP6_GE.JJA %>% mutate(CMIP_var = var) %>% select(-c(var, station))
+tasmin_adjust_stations_and_CMIP.JJA = merge(tasmin_adjust_stations.JJA, tasmin_CMIP6_GE_mutate.JJA, by=c("jul_time", "year", "scenario", "CMIP_model")) 
+
+#DJF
+tasmin_CMIP6_GE_mutate.DJF = tasmin_CMIP6_GE.DJF %>% mutate(CMIP_var = var) %>% select(-c(var, station))
+tasmin_adjust_stations_and_CMIP.DJF = merge(tasmin_adjust_stations.DJF, tasmin_CMIP6_GE_mutate.DJF, by=c("jul_time", "year", "scenario", "CMIP_model")) 
+```
+
+```{r, TX add column to Adjust data}
+TX_CMIP6_GE_mutate = TX_CMIP6_GE %>% mutate(CMIP_var = var) %>% select(-c(var, station))
+TX_adjust_stations_and_CMIP = merge(TX_adjust_stations, TX_CMIP6_GE_mutate, by=c("year", "scenario", "CMIP_model")) 
+```
+
+# Values above threshold
+```{r}
+th = 55
+tasmax_adjust_stations_NaN = data.frame(matrix(ncol=5, nrow=0))
+colnames(tasmax_adjust_stations_NaN) = c('CMIP_model', 'station', 'scenario', 'nb_NaN', 'percentage_NaN')
+
+tasmax_adjust_stations_NaN.JJA = data.frame(matrix(ncol=5, nrow=0))
+colnames(tasmax_adjust_stations_NaN.JJA) = c('CMIP_model', 'station', 'scenario', 'nb_NaN', 'percentage_NaN')
+
+tasmax_CMIP6_GE_NaN = data.frame(matrix(ncol=5, nrow=0))
+colnames(tasmax_CMIP6_GE_NaN) = c('CMIP_model', 'station', 'scenario', 'nb_NaN', 'percentage_NaN')
+
+tasmax_CMIP6_GE_NaN.JJA = data.frame(matrix(ncol=5, nrow=0))
+colnames(tasmax_CMIP6_GE_NaN.JJA) = c('CMIP_model', 'station', 'scenario', 'nb_NaN', 'percentage_NaN')
+
+for(CMIP_mod in models){
+  for(sc in scenarios){
+    data_loop_CMIP = tasmax_CMIP6_GE %>% filter(CMIP_model==CMIP_mod, scenario==sc)
+    nb_nan_loop_CMIP = sum(data_loop_CMIP.JJA$var > th)
+    df_loop_CMIP = data.frame(CMIP_model=CMIP_mod, 
+                         station='GrandEst', 
+                         scenario=sc, 
+                         nb_NaN = nb_nan_loop_CMIP, 
+                         percentage_NaN = nb_nan_loop_CMIP/nrow(data_loop_CMIP))
+    tasmax_CMIP6_GE_NaN = rbind(tasmax_CMIP6_GE_NaN, df_loop_CMIP)
+    
+    data_loop_CMIP.JJA = tasmax_CMIP6_GE.JJA %>% filter(CMIP_model==CMIP_mod, scenario==sc)
+    nb_nan_loop_CMIP.JJA = sum(data_loop_CMIP.JJA$var > th)
+    df_loop_CMIP.JJA = data.frame(CMIP_model=CMIP_mod, 
+                         station='GrandEst', 
+                         scenario=sc, 
+                         nb_NaN = nb_nan_loop_CMIP.JJA, 
+                         percentage_NaN = nb_nan_loop_CMIP.JJA/nrow(data_loop_CMIP.JJA))
+    tasmax_CMIP6_GE_NaN.JJA = rbind(tasmax_CMIP6_GE_NaN.JJA, df_loop_CMIP.JJA)
+    
+    for(st in stations){
+      #Global
+      data_loop = tasmax_adjust_stations %>% filter(CMIP_model==CMIP_mod, station==st, scenario==sc)
+      nb_nan_loop = sum(data_loop$var > th)
+      df_loop = data.frame(CMIP_model=CMIP_mod, 
+                           station=st, 
+                           scenario=sc, 
+                           nb_NaN = nb_nan_loop, 
+                           percentage_NaN = nb_nan_loop/nrow(data_loop))
+      tasmax_adjust_stations_NaN = rbind(tasmax_adjust_stations_NaN, df_loop)
+      
+      #Summer
+      data_loop.JJA = tasmax_adjust_stations.JJA %>% filter(CMIP_model==CMIP_mod, station==st, scenario==sc)
+      nb_nan_loop.JJA = sum(data_loop.JJA$var > th)
+      df_loop.JJA = data.frame(CMIP_model=CMIP_mod, 
+                           station=st, 
+                           scenario=sc, 
+                           nb_NaN = nb_nan_loop.JJA, 
+                           percentage_NaN = nb_nan_loop.JJA/nrow(data_loop.JJA))
+      tasmax_adjust_stations_NaN.JJA = rbind(tasmax_adjust_stations_NaN.JJA, df_loop.JJA)
+    }
+  }
+}
+```
+
+```{r}
+colour_breaks = c(0,1,2,10,20,50,100)
+colours = c('#1a9850', '#91cf60', '#d9ef8b', '#ffffbf', '#fee08b', '#fc8d59', '#d73027')
+
+tasmax_adjust_stations_NaN %>%
+  ggplot(aes(x=CMIP_model, y=scenario, color=nb_NaN)) +
+  geom_point(size=4) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+  facet_wrap(~station) +
+  labs(x='Model CMIP', y='Scenario', color=paste('Number of values >', th),
+       title=paste('Tasmax Adjust-Values exceeding the threshold', th)) +
+  scale_colour_gradientn(limits = range(tasmax_adjust_stations_NaN$nb_NaN),  
+                        colours = colours[c(1, seq_along(colours), length(colours))] ,
+                        values = c(0, scales::rescale(colour_breaks, from = range(tasmax_adjust_stations_NaN$nb_NaN)), 1))
+  #scale_colour_stepsn(colours=colours, breaks = colour_breaks)
+ggsave(paste(fig_path,"nb_above_",th, "_tasmax_Adjust.png", sep=""), height=4, width=8)
+
+tasmax_adjust_stations_NaN.JJA %>%
+  ggplot(aes(x=CMIP_model, y=scenario, color=nb_NaN)) +
+  geom_point(size=4) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+  facet_wrap(~station) +
+  labs(x='Model CMIP', y='Scenario', color=paste('Number of values >', th),
+       title=paste('Tasmax JJA Adjust-Values exceeding the threshold', th)) +
+  scale_colour_gradientn(limits = range(tasmax_adjust_stations_NaN.JJA$nb_NaN),  
+                        colours = colours[c(1, seq_along(colours), length(colours))] ,
+                        values = c(0, scales::rescale(colour_breaks, from = range(tasmax_adjust_stations_NaN.JJA$nb_NaN)), 1))
+  #scale_colour_stepsn(colours=colours, breaks = colour_breaks)
+ggsave(paste(fig_path,"nb_above_",th, "_tasmax_JJA_Adjust.png", sep=""), height=4, width=8)
+```
+
+```{r}
+colour_breaks = c(0,1,2,10,20,50,100)
+colours = c('#1a9850', '#91cf60', '#d9ef8b', '#ffffbf', '#fee08b', '#fc8d59', '#d73027')
+
+tasmax_CMIP6_GE_NaN %>%
+  ggplot(aes(x=CMIP_model, y=scenario, color=nb_NaN)) +
+  geom_point(size=4) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+  facet_wrap(~station) +
+  labs(x='Model CMIP', y='Scenario', color=paste('Number of values >', th),
+       title=paste('Tasmax Adjust-Values exceeding the threshold', th)) +
+  #scale_color_manuel(values=c(0,1,2,5,10,20,50)) +
+  scale_colour_gradientn(limits = range(tasmax_CMIP6_GE_NaN$nb_NaN),  
+                        colours = colours[c(1, seq_along(colours), length(colours))] ,
+                        values = c(0, scales::rescale(colour_breaks, from = range(tasmax_CMIP6_GE_NaN$nb_NaN)), 1))
+  #scale_colour_stepsn(colours=colours, breaks = colour_breaks)
+#ggsave(paste(fig_path,"nb_above_",th, "_tasmax_CMIP.png", sep=""), height=4, width=8)
+
+tasmax_CMIP6_GE_NaN.JJA %>%
+  ggplot(aes(x=CMIP_model, y=scenario, color=nb_NaN)) +
+  geom_point(size=4) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle=45, vjust=1, hjust=1)) +
+  facet_wrap(~station) +
+  labs(x='Model CMIP', y='Scenario', color=paste('Number of values >', th),
+       title=paste('Tasmax JJA CMIP-Values exceeding the threshold', th)) +
+  #scale_color_manuel(values=c(0,1,2,5,10,20,50)) +
+  scale_colour_gradientn(limits = range(tasmax_CMIP6_GE_NaN.JJA$nb_NaN),  
+                        colours = colours[c(1, seq_along(colours), length(colours))] ,
+                        values = c(0, scales::rescale(colour_breaks, from = range(tasmax_CMIP6_GE_NaN.JJA$nb_NaN)), 1))
+  #scale_colour_stepsn(colours=colours, breaks = colour_breaks)
+ggsave(paste(fig_path,"nb_above_",th, "_tasmax_JJA_CMIP.png", sep=""), height=4, width=8)
+```
+
+#Time serie plots 
+
+```{r, Time serie of all models}
+model_with_pb = c('TaiESM1', 'BCC-CSM2-MR', 'CanESM5', 'GFDL-ESM4')
+for(CMIP_mod in model_with_pb){
+  plot = ggplot() +
+    geom_point(aes(x=year, y=var, color=station), alpha = 0.5, data = TX_adjust_stations %>% filter(CMIP_model==CMIP_mod)) +
+    geom_line(aes(x=year, y=var), alpha=0.9, data = TX_CMIP6_GE %>% filter(CMIP_model == CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1, scale='free') +
+    ylab('Temperature [°C]') +
+    xlab('Time [Year]') +
+    labs(color='Station') +
+    ggtitle(paste('Yearly maximum temperature', CMIP_mod))+
+    theme_minimal()
+  plot(plot)
+  ggsave(paste(fig_path,"time_serie_yearly_tasmax_", CMIP_mod,"_corrected.png", sep="")) 
+}
+```
+
+```{r, Time serie of all models}
+for(CMIP_mod in models){
+  plot = ggplot() +
+    geom_point(aes(x=year, y=var-CMIP_var, color=station), alpha = 0.5, data = TX_adjust_stations_and_CMIP %>% filter(CMIP_model==CMIP_mod)) +
+    #geom_line(aes(x=year, y=var), alpha=0.9, data = TX_CMIP6_GE %>% filter(CMIP_model == CMIP_mod)) +
+    geom_hline(yintercept = 0, alpha=0.7) + 
+    geom_hline(yintercept = 10, alpha=0.7) + 
+    geom_hline(yintercept = -10, alpha=0.7) + 
+    geom_hline(yintercept = 15, alpha=0.4) + 
+    geom_hline(yintercept = -15, alpha=0.4) + 
+    facet_wrap(~scenario, ncol=1, scale='free') +
+    ylab('Temperature [°C]') +
+    xlab('Time [Year]') +
+    #ylim(-20,20) +
+    labs(color='Station') +
+    ggtitle(paste('Difference of Yearly maximum temperature with CMIP6-', CMIP_mod))+
+    theme_minimal()
+  plot(plot)
+  ggsave(paste(fig_path,"time_serie_yearly_tasmax_diff_with_CMIP_", CMIP_mod,"_corrected.png", sep="")) 
+}
+```
+
+#Histogram
+
+```{r, Histogram tasmax of all the data, JJA}
+for(CMIP_mod in models){
+  p = ggplot() +
+    geom_density(aes(x=var), color='black', alpha=0.4, data = tasmax_CMIP6_GE.JJA %>% filter(CMIP_model==CMIP_mod)) +
+    geom_histogram(aes(x=var, y=..density.., fill=station), position='identity', alpha = 0.4, bins=300, data = tasmax_adjust_stations.JJA %>% filter(CMIP_model==CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1) +
+    xlab('Temperature [°C]') +
+    ylab('Density') +
+    #xlim(-10,55) +
+    labs(fill='Station') +
+    ggtitle(paste('Density of daily maximum temperature-JJA-', CMIP_mod))+
+    theme_minimal()
+  plot(p)
+ ggsave(paste(fig_path,"hist_tasmax_JJA_", CMIP_mod,".png", sep=""), width = 8 , height = 5) 
+}
+```
+
+```{r, Histogram tasmax of all the data, DJF}
+for(CMIP_mod in models){
+  p = ggplot() +
+    geom_density(aes(x=var), color='black', alpha=0.4, data = tasmax_CMIP6_GE.DJF %>% filter(CMIP_model==CMIP_mod)) +
+    geom_histogram(aes(x=var, y=..density.., fill=station), position='identity', alpha = 0.4, bins=300, data = tasmax_adjust_stations.DJF %>% filter(CMIP_model==CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1) +
+    xlab('Temperature [°C]') +
+    ylab('Density') +
+    labs(fill='Station') +
+    ggtitle(paste('Density of daily maximum temperature-DJF-', CMIP_mod))+
+    theme_minimal()
+  plot(p)
+ ggsave(paste(fig_path,"hist_tasmax_DJF_", CMIP_mod,".png", sep=""), width = 8 , height = 5) 
+}
+```
+
+```{r, Histogram tasmin of all the data, DJF}
+for(CMIP_mod in models){
+  p = ggplot() +
+    geom_density(aes(x=var), color='black', alpha=0.4, data = tasmin_CMIP6_GE.DJF %>% filter(CMIP_model==CMIP_mod)) +
+    geom_histogram(aes(x=var, y=..density.., fill=station), position='identity', alpha = 0.4, bins=300, data = tasmin_adjust_stations.DJF %>% filter(CMIP_model==CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1) +
+    xlab('Temperature [°C]') +
+    ylab('Density') +
+    labs(fill='Station') +
+    ggtitle(paste('Density of daily minimal temperature-DJF-', CMIP_mod))+
+    theme_minimal()
+  plot(p)
+ ggsave(paste(fig_path,"hist_tasmin_DJF_", CMIP_mod,".png", sep=""), width = 8 , height = 5) 
+}
+```
+
+```{r, Histogram tasmax diff with CMIP, JJA}
+for(CMIP_mod in models){
+  p = ggplot() +
+    geom_histogram(aes(x=var-CMIP_var, y=..density.., fill=station), position='identity', alpha = 0.4, bins=300, data = tasmax_adjust_stations_and_CMIP.JJA %>% filter(CMIP_model==CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1) +
+    xlab('Temperature [°C]') +
+    ylab('Density') +
+    labs(fill='Station') +
+    ggtitle(paste('Daily maximum temperature difference with CMIP Grand Est-JJA-', CMIP_mod))+
+    theme_minimal()
+  plot(p)
+ ggsave(paste(fig_path,"hist_tasmax_diff_JJA_with_CMIP_", CMIP_mod,".png", sep=""), width = 8 , height = 5) 
+}
+```
+
+```{r, Histogram tasmax diff with CMIP, DJF}
+for(CMIP_mod in models){
+  p = ggplot() +
+    geom_histogram(aes(x=var-CMIP_var, y=..density.., fill=station), position='identity', alpha = 0.4, bins=300, data = tasmax_adjust_stations_and_CMIP.DJF %>% filter(CMIP_model==CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1) +
+    xlab('Temperature [°C]') +
+    ylab('Density') +
+    labs(fill='Station') +
+    ggtitle(paste('Daily maximum temperature difference with CMIP Grand Est-DJF-', CMIP_mod))+
+    theme_minimal() 
+  plot(p)
+ ggsave(paste(fig_path,"hist_tasmax_diff_DJF_with_CMIP_", CMIP_mod,".png", sep=""), width = 8 , height = 5) 
+}
+```
+
+```{r, Histogram tasmin diff with CMIP, DJF}
+for(CMIP_mod in models){
+  p = ggplot() +
+    geom_histogram(aes(x=var-CMIP_var, y=..density.., fill=station), position='identity', alpha = 0.4, bins=300, data = tasmin_adjust_stations_and_CMIP.DJF %>% filter(CMIP_model==CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1) +
+    xlab('Temperature [°C]') +
+    ylab('Density') +
+    labs(fill='Station') +
+    ggtitle(paste('Daily minimal temperature difference with CMIP Grand Est-DJF-', CMIP_mod))+
+    theme_minimal()
+  plot(p)
+ ggsave(paste(fig_path,"hist_tasmin_diff_DJF_with_CMIP_", CMIP_mod,".png", sep=""), width = 8 , height = 5) 
+}
+```
+
+```{r, Histogram tasmin diff with CMIP, JJA}
+for(CMIP_mod in models){
+  p = ggplot() +
+    geom_histogram(aes(x=var-CMIP_var, y=..density.., fill=station), position='identity', alpha = 0.4, bins=300, data = tasmin_adjust_stations_and_CMIP.JJA %>% filter(CMIP_model==CMIP_mod)) +
+    facet_wrap(~scenario, ncol=1) +
+    xlab('Temperature [°C]') +
+    ylab('Density') +
+    labs(fill='Station') +
+    ggtitle(paste('Daily minimal temperature difference with CMIP Grand Est-JJA-', CMIP_mod))+
+    theme_minimal()
+  plot(p)
+ ggsave(paste(fig_path,"hist_tasmin_diff_JJA_with_CMIP_", CMIP_mod,".png", sep=""), width = 8 , height = 5) 
+}
+```
+
+
+
+
